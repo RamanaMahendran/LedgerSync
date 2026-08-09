@@ -1,0 +1,1401 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0E1B24">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Ledger">
+<title>Ledger — money in, money out, net worth</title>
+<link rel="manifest" href='data:application/json,{"name":"Ledger","short_name":"Ledger","start_url":".","display":"standalone","background_color":"%23F1F3F2","theme_color":"%230E1B24"}'>
+<style>
+:root{
+  --ink:#0E1B24; --paper:#F1F3F2; --card:#FFFFFF; --sunk:#F6F8F7;
+  --line:#DCE2E0; --mute:#6C7B82;
+  --in:#0B6E62;  --in-bg:rgba(11,110,98,.10);
+  --out:#B4432B; --out-bg:rgba(180,67,43,.10);
+  --hold:#4A6A8A; --hold-bg:rgba(74,106,138,.10);
+  --warn:#9A6B15;
+  --r:12px; --sb:env(safe-area-inset-bottom,0px);
+  --mono:ui-monospace,"SF Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,system-ui,sans-serif;
+}
+body.dark{
+  --ink:#E7EDEA; --paper:#0C1216; --card:#151E24; --sunk:#111A20;
+  --line:#25323A; --mute:#8598A1;
+  --in:#3FBFA8; --in-bg:rgba(63,191,168,.12);
+  --out:#E2775A; --out-bg:rgba(226,119,90,.12);
+  --hold:#8FB0CC; --hold-bg:rgba(143,176,204,.12);
+  --warn:#D9A441;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:15px;
+  min-height:100dvh;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+.num{font-family:var(--mono);font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+.wrap{max-width:640px;margin:0 auto;padding:0 14px 96px}
+.top{padding:16px 0 10px;display:flex;align-items:center;gap:10px}
+.top h1{font-size:13px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;flex:1}
+.eyebrow{font-size:10px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--mute)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);padding:14px;margin-bottom:10px}
+.row{display:flex;align-items:center;gap:10px}
+.grow{flex:1;min-width:0}
+.trunc{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.muted{color:var(--mute)} .sm{font-size:12px} .xs{font-size:11px}
+
+.sync{border:1px solid var(--line);background:var(--card);border-radius:20px;padding:5px 11px;
+  font-size:11px;font-weight:600;color:var(--mute);cursor:pointer;white-space:nowrap;
+  display:flex;align-items:center;gap:6px}
+.sync::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--mute)}
+.sync.ok::before{background:var(--in)}
+.sync.busy::before{background:var(--warn);animation:blink 1s steps(2) infinite}
+.sync.bad::before{background:var(--out)}
+@keyframes blink{50%{opacity:.25}}
+
+.beam{margin:12px 0 4px}
+.beam-track{display:flex;height:26px;background:var(--sunk);border-radius:5px;overflow:hidden;
+  position:relative;border:1px solid var(--line)}
+.beam-l,.beam-r{height:100%;transition:width .45s cubic-bezier(.22,1,.36,1)}
+.beam-l{background:var(--out);margin-left:auto}
+.beam-r{background:var(--in)}
+.beam-track::after{content:'';position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;
+  background:var(--ink);opacity:.55}
+.beam-legend{display:flex;justify-content:space-between;margin-top:6px}
+.beam-legend b{display:block;font-size:17px;font-weight:700;margin-top:1px}
+.beam-legend .r{text-align:right}
+
+.big{font-size:30px;font-weight:700;line-height:1.05}
+.pos{color:var(--in)} .neg{color:var(--out)} .hold{color:var(--hold)} .warn{color:var(--warn)}
+
+.ruled>div{border-top:1px solid var(--line)}
+.ruled>div:first-child{border-top:none}
+.item{display:flex;align-items:center;gap:10px;padding:10px 0}
+.tag{font-size:10px;font-weight:700;padding:2px 6px;border-radius:4px;letter-spacing:.04em}
+.tag.in{background:var(--in-bg);color:var(--in)}
+.tag.out{background:var(--out-bg);color:var(--out)}
+.tag.mv{background:var(--hold-bg);color:var(--hold)}
+.who{font-size:10px;font-weight:700;padding:1px 5px;border-radius:4px;border:1px solid var(--line);
+  color:var(--mute);white-space:nowrap}
+.daterule{display:flex;align-items:center;gap:8px;margin:16px 0 2px}
+.daterule span{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--mute)}
+.daterule i{flex:1;height:1px;background:var(--line)}
+.daterule b{font-family:var(--mono);font-size:12px;color:var(--mute)}
+
+.seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:var(--card)}
+.seg button{flex:1;padding:8px 4px;border:none;background:transparent;font-size:12px;font-weight:600;
+  color:var(--mute);cursor:pointer;border-left:1px solid var(--line)}
+.seg button:first-child{border-left:none}
+.seg button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:9px;padding:9px 12px;
+  font-size:13px;font-weight:600;cursor:pointer}
+.btn:active{transform:scale(.985)}
+.btn.wide{width:100%;display:block;margin-top:8px}
+.btn.solid{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn.danger{color:var(--out);border-color:var(--out)}
+.icon{background:none;border:none;cursor:pointer;padding:6px;color:var(--mute);font-size:13px;line-height:1}
+.field{margin-top:12px}
+.field label{display:block;font-size:11px;font-weight:700;letter-spacing:.09em;
+  text-transform:uppercase;color:var(--mute);margin-bottom:5px}
+.field input,.field select,.field textarea{width:100%;padding:11px;border:1px solid var(--line);
+  border-radius:9px;background:var(--sunk);outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--ink)}
+.field textarea{min-height:56px;resize:vertical}
+.amt-in{width:100%;border:none;border-bottom:2px solid var(--line);background:transparent;
+  font-family:var(--mono);font-size:30px;font-weight:700;padding:6px 0;outline:none}
+.amt-in:focus{border-color:var(--ink)}
+.two{display:flex;gap:8px}.two>*{flex:1;min-width:0}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}
+.chip{padding:7px 11px;border-radius:16px;border:1px solid var(--line);background:var(--sunk);
+  font-size:12.5px;font-weight:600;cursor:pointer;color:var(--mute);display:inline-flex;align-items:center}
+.chip[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+
+.nav{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;background:var(--card);
+  border-top:1px solid var(--line);padding-bottom:var(--sb)}
+.nav button{flex:1;border:none;background:none;padding:9px 2px 11px;cursor:pointer;
+  font-size:10px;font-weight:600;letter-spacing:.05em;color:var(--mute);
+  border-top:2px solid transparent;margin-top:-1px}
+.nav button[aria-current="page"]{color:var(--ink);border-top-color:var(--ink)}
+.nav i{display:block;font-style:normal;font-size:17px;margin-bottom:2px}
+.fab{position:fixed;right:16px;bottom:calc(70px + var(--sb));z-index:41;height:50px;padding:0 20px;
+  border-radius:25px;border:none;background:var(--ink);color:var(--paper);font-size:14px;
+  font-weight:700;cursor:pointer;box-shadow:0 6px 22px rgba(14,27,36,.28)}
+.fab:active{transform:scale(.96)}
+
+.scrim{position:fixed;inset:0;background:rgba(8,14,18,.5);z-index:100}
+.sheet{position:fixed;left:0;right:0;bottom:0;z-index:101;background:var(--card);
+  border-radius:16px 16px 0 0;padding:8px 16px calc(24px + var(--sb));
+  max-height:90dvh;overflow-y:auto;animation:up .28s cubic-bezier(.22,1,.36,1)}
+@keyframes up{from{transform:translateY(12%)}to{transform:translateY(0)}}
+.sheet .grab{width:34px;height:4px;border-radius:2px;background:var(--line);margin:6px auto 12px}
+.sheet h2{font-size:17px;font-weight:700;margin-bottom:2px}
+.sheet .max{max-width:640px;margin:0 auto}
+.empty{text-align:center;padding:34px 12px;color:var(--mute)}
+.empty b{display:block;font-size:15px;color:var(--ink);margin-bottom:4px}
+.note{background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+  font-size:12px;color:var(--mute);line-height:1.55;margin-top:10px}
+.bar{height:7px;border-radius:4px;background:var(--sunk);overflow:hidden;margin-top:5px}
+.bar>div{height:100%;border-radius:4px}
+.split{display:flex;gap:8px;margin-top:8px}
+.split>div{flex:1;background:var(--sunk);border:1px solid var(--line);border-radius:9px;padding:9px 10px}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+"use strict";
+/* ═══════════════════════════════════════════════════════════════
+   LEDGER
+   What it answers:
+     1. Where did money come from, and where did it go?
+     2. Who spent it — me or my wife?
+     3. Who was it for — our family or my parents?
+     4. What do I own, and what do I owe?
+
+   Two rules that keep it honest:
+     · Balances are never stored. Each one is recomputed from the
+       entry list, so nothing can silently drift out of step.
+     · Nothing is truly deleted, only marked. A delete on one phone
+       then can't come back to life from the other one.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. reference data ─────────────────────────────────── */
+
+// flow:'spend' money genuinely left you · 'move' it changed shape but you still have it
+const OUT_CATS = [
+  {id:'food',      label:'Food & eating out',  flow:'spend'},
+  {id:'groceries', label:'Groceries',          flow:'spend'},
+  {id:'transport', label:'Transport & fuel',   flow:'spend'},
+  {id:'bills',     label:'Bills & recharge',   flow:'spend'},
+  {id:'rent',      label:'Rent',               flow:'spend'},
+  {id:'health',    label:'Health & medicine',  flow:'spend'},
+  {id:'shopping',  label:'Shopping',           flow:'spend'},
+  {id:'education', label:'Education & school', flow:'spend'},
+  {id:'fun',       label:'Entertainment',      flow:'spend'},
+  {id:'personal',  label:'Personal care',      flow:'spend'},
+  {id:'family',    label:'Gifts & functions',  flow:'spend'},
+  {id:'help',      label:'Support & upkeep',   flow:'spend'},
+  {id:'subs',      label:'Subscriptions',      flow:'spend'},
+  {id:'fees',      label:'Fees & charges',     flow:'spend'},
+  {id:'other',     label:'Something else',     flow:'spend'},
+  {id:'invest',    label:'Invested / saved',   flow:'move'},
+  {id:'lend',      label:'Lent to someone',    flow:'move'},
+  {id:'repay',     label:'Loan repayment',     flow:'move'}
+];
+const IN_CATS = [
+  {id:'salary',    label:'Salary',             flow:'earn'},
+  {id:'business',  label:'Business',           flow:'earn'},
+  {id:'freelance', label:'Freelance / side',   flow:'earn'},
+  {id:'interest',  label:'Interest & dividend',flow:'earn'},
+  {id:'rentin',    label:'Rent received',      flow:'earn'},
+  {id:'refund',    label:'Refund / cashback',  flow:'earn'},
+  {id:'gift',      label:'Gift received',      flow:'earn'},
+  {id:'otherin',   label:'Something else',     flow:'earn'},
+  {id:'sold',      label:'Sold an investment', flow:'move'},
+  {id:'repaid',    label:'Someone repaid me',  flow:'move'},
+  {id:'borrowed',  label:'Borrowed',           flow:'move'}
+];
+const ASSET_CATS = ['Investments','Savings & FD','Gold','Property','Money owed to me','Other'];
+const DEBT_CATS  = ['Bank loan','Credit card dues','Borrowed from person','EMI / hire purchase','Other'];
+const CAT = {};
+[...OUT_CATS, ...IN_CATS].forEach(c => CAT[c.id] = c);
+
+/* ── 2. helpers ────────────────────────────────────────── */
+
+const uid = () => Date.now().toString(36) + Math.random().toString(36).slice(2,7);
+const now = () => Date.now();
+const num = v => { const n = parseFloat(v); return isFinite(n) ? Math.round(n*100)/100 : 0; };
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const money = n => (n<0?'−':'') + '₹' +
+  Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:0,maximumFractionDigits:0});
+const money2 = n => (n<0?'−':'') + '₹' +
+  Math.abs(n).toLocaleString('en-IN',{minimumFractionDigits:2,maximumFractionDigits:2});
+const iso = d => { const x = new Date(d);
+  return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0'); };
+const today = () => iso(new Date());
+const live = arr => arr.filter(x => !x.deleted);
+const el = id => document.getElementById(id);
+const val = id => { const e = el(id); return e ? e.value.trim() : ''; };
+
+function dayLabel(s){
+  if(s === today()) return 'Today';
+  if(s === iso(Date.now()-864e5)) return 'Yesterday';
+  return new Date(s+'T00:00:00').toLocaleDateString('en-IN',{weekday:'short',day:'numeric',month:'short'});
+}
+function ago(ms){
+  if(!ms) return 'never';
+  const m = Math.floor((Date.now()-ms)/60000);
+  if(m < 1) return 'just now';
+  if(m < 60) return m+'m ago';
+  const h = Math.floor(m/60);
+  if(h < 24) return h+'h ago';
+  const d = Math.floor(h/24);
+  return d === 1 ? 'yesterday' : d+' days ago';
+}
+function range(key){
+  const n = new Date();
+  if(key === 'all') return {from:'0000-01-01', to:'9999-12-31', label:'All time'};
+  if(key === 'this'){ const f = new Date(n.getFullYear(), n.getMonth(), 1);
+    return {from:iso(f), to:today(), label:f.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}; }
+  if(key === 'last'){ const f = new Date(n.getFullYear(), n.getMonth()-1, 1),
+                            t = new Date(n.getFullYear(), n.getMonth(), 0);
+    return {from:iso(f), to:iso(t), label:f.toLocaleDateString('en-IN',{month:'long',year:'numeric'})}; }
+  const f = new Date(n.getFullYear(), n.getMonth()-5, 1);
+  return {from:iso(f), to:today(), label:'Last 6 months'};
+}
+const inRange = (t,r) => t.date >= r.from && t.date <= r.to;
+
+/* ── 3. storage ────────────────────────────────────────── */
+
+const KEY = 'LEDGER_V1', URL_KEY = 'LEDGER_SYNC_URL', SYNC_AT = 'LEDGER_LAST_SYNC';
+const blank = () => ({
+  accounts:[
+    {id:'a_bank', name:'Bank',         kind:'bank', opening:0, updated:now()},
+    {id:'a_cash', name:'Cash in hand', kind:'cash', opening:0, updated:now()},
+    {id:'a_card', name:'Credit card',  kind:'card', opening:0, updated:now()}
+  ],
+  txns:[], assets:[], debts:[],
+  prefs:{dark:false, people:['Me','Wife'], groups:['Our family','Parents'], updated:now()}
+});
+
+let DB, syncUrl = '', syncState = {status:'off', at:0, msg:''};
+
+function loadLocal(){
+  try{
+    const raw = localStorage.getItem(KEY);
+    if(raw){
+      const d = Object.assign(blank(), JSON.parse(raw));
+      d.prefs = Object.assign(blank().prefs, d.prefs || {});
+      return d;
+    }
+  }catch(e){ console.warn('Could not read saved data', e); }
+  return migrateFromV3() || blank();
+}
+let saveTimer = null, pushTimer = null;
+function save(alsoPush = true){
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => {
+    try{ localStorage.setItem(KEY, JSON.stringify(DB)); }
+    catch(e){ alert('Storage is full. Save a backup from Settings, then delete old entries.'); }
+  }, 200);
+  if(alsoPush && syncUrl){
+    clearTimeout(pushTimer);
+    pushTimer = setTimeout(() => sync(false), 4000);   // quiet auto-sync once edits settle
+  }
+}
+
+/* Brings across data from the older ExpenseTracker v3 file, if it's on this device. */
+function migrateFromV3(){
+  const g = k => { try{ return JSON.parse(localStorage.getItem(k)) || null; }catch(e){ return null; } };
+  const oldExp = g('ET_EXPENSES'), oldInc = g('ET_INCOME'), oldLoan = g('ET_LOANS'),
+        oldAsset = g('ET_ASSETS'), oldCW = g('ET_CASH_WD'), oldCr = g('ET_CREDITS');
+  if(!oldExp && !oldInc && !oldAsset && !oldLoan) return null;
+
+  const d = blank();
+  const MAP = {food:'food',groceries:'groceries',transport:'transport',bills:'bills',health:'health',
+    shopping:'shopping',education:'education',entertainment:'fun',personal:'personal',hotel:'other',
+    subscription:'subs',emi:'repay',repair:'other',other:'other'};
+
+  (oldExp||[]).forEach(e => d.txns.push({
+    id:uid(), updated:now(), date:e.date, kind:'out', amount:num(e.amount),
+    cat:MAP[e.category] || 'other',
+    acct: e.payMethod === 'cc' ? 'a_card' : e.payMethod === 'cash' ? 'a_cash' : 'a_bank',
+    party:(e.note||'').trim(), note:[e.subCat, e.desc].filter(Boolean).join(' — '),
+    by: e.spentBy === 'wife' ? 'Wife' : 'Me', grp:'Our family'
+  }));
+  (oldInc||[]).forEach(i => d.txns.push({
+    id:uid(), updated:now(), date:i.date, kind:'in', amount:num(i.amount), cat:'salary',
+    acct:'a_bank', party:(i.source||'').trim(), note:i.desc||'', by:'Me', grp:''
+  }));
+  (oldCr||[]).forEach(c => d.txns.push({
+    id:uid(), updated:now(), date:c.date, kind:'in', amount:num(c.amount),
+    cat:{freelance:'freelance',business:'business',refund:'refund',
+         liquidation:'sold',borrowed:'borrowed'}[c.type] || 'otherin',
+    acct:'a_bank', party:(c.source||'').trim(), note:c.desc||'', by:'Me', grp:''
+  }));
+  (oldCW||[]).forEach(c => d.txns.push({           // withdrawal is a move, not a spend
+    id:uid(), updated:now(), date:c.date, kind:'xfer', amount:num(c.amount),
+    acct:'a_bank', to:'a_cash', party:c.source||'ATM', note:c.desc||'', by:'', grp:''
+  }));
+  (oldAsset||[]).forEach(a => d.assets.push({
+    id:uid(), updated:now(), name:a.name||'Unnamed', cat:'Investments',
+    value:num(a.currentVal), invested:num(a.investedAmt), note:a.broker||'', checked:a.ts || now()
+  }));
+  (oldLoan||[]).filter(l => !l.settled).forEach(l => {
+    if(l.type === 'taken')
+      d.debts.push({id:uid(), updated:now(), name:l.person||'Lender',
+        cat:'Borrowed from person', outstanding:num(l.amount), note:l.desc||''});
+    else
+      d.assets.push({id:uid(), updated:now(), name:(l.person||'Friend')+' owes me',
+        cat:'Money owed to me', value:num(l.amount), invested:0, note:l.desc||'', checked:now()});
+  });
+  d.migrated = true;
+  return d;
+}
+
+/* ── 4. derived numbers (never stored) ─────────────────── */
+
+const acct = id => live(DB.accounts).find(a => a.id === id) || {name:'—', kind:'bank', opening:0};
+
+function balance(id){
+  let b = num(acct(id).opening);
+  for(const t of DB.txns){
+    if(t.deleted) continue;
+    if(t.kind === 'in'  && t.acct === id) b += t.amount;
+    else if(t.kind === 'out' && t.acct === id) b -= t.amount;
+    else if(t.kind === 'xfer'){
+      if(t.acct === id) b -= t.amount;
+      if(t.to   === id) b += t.amount;
+    }
+  }
+  return Math.round(b*100)/100;
+}
+const cashOnHand = () => live(DB.accounts).filter(a => a.kind !== 'card')
+  .reduce((s,a) => s + balance(a.id), 0);
+const cardDues = () => live(DB.accounts).filter(a => a.kind === 'card')
+  .reduce((s,a) => s + Math.min(0, balance(a.id)), 0) * -1;
+const assetTotal = () => live(DB.assets).reduce((s,a) => s + num(a.value), 0);
+const debtTotal  = () => live(DB.debts).reduce((s,d) => s + num(d.outstanding), 0);
+const netWorth   = () => cashOnHand() + assetTotal() - debtTotal() - cardDues();
+
+function totals(r){
+  let earned = 0, spent = 0, movedIn = 0, movedOut = 0, emi = 0, saved = 0;
+  for(const t of live(DB.txns)){
+    if(!inRange(t, r)) continue;
+    const f = (CAT[t.cat] || {}).flow;
+    if(t.kind === 'in')       f === 'earn'  ? earned += t.amount : movedIn  += t.amount;
+    else if(t.kind === 'out'){
+      if(f === 'spend') spent += t.amount;
+      else {
+        movedOut += t.amount;
+        if(t.cat === 'repay') emi += t.amount;
+        else if(t.cat === 'invest' || t.cat === 'lend') saved += t.amount;
+      }
+    }
+  }
+  // spent  = everyday living expenses
+  // emi    = loan / EMI repayment
+  // saved  = money put into investments, savings or lent out (you still own it)
+  // outlay = everything that actually left the account
+  return {earned, spent, emi, saved, outlay:spent + emi + saved, movedIn, movedOut,
+          net:earned - spent, netTotal:earned - spent - emi - saved};
+}
+/* The label a transaction falls under for a given breakdown dimension. */
+function dimKey(t, dim){
+  if(dim === 'cat') return t.cat || 'other';
+  if(dim === 'by')  return t.by  || 'Not set';
+  return t.grp || 'Not set';
+}
+/* Groups by whichever label you ask for: category, person, or who it was for. */
+function breakdown(r, kind, dim){
+  const m = new Map();
+  for(const t of live(DB.txns)){
+    if(t.kind !== kind || !inRange(t, r)) continue;
+    const c = CAT[t.cat] || {label:'Something else', flow:'spend'};
+    const key = dimKey(t, dim);
+    const label = dim === 'cat' ? c.label : key;
+    const e = m.get(key) || {key, label, flow:dim === 'cat' ? c.flow : 'spend', total:0, count:0};
+    e.total += t.amount; e.count++;
+    m.set(key, e);
+  }
+  return [...m.values()].sort((a,b) => b.total - a.total);
+}
+/* Every transaction behind one breakdown row, newest first. */
+function rowTxns(r, kind, dim, key){
+  return live(DB.txns)
+    .filter(t => t.kind === kind && inRange(t, r) && dimKey(t, dim) === key)
+    .sort((a,b) => b.date.localeCompare(a.date) || (b.updated||0) - (a.updated||0));
+}
+/* Real spending only, split by person or group — for the at-a-glance strips. */
+function spendBy(r, dim){
+  const m = new Map();
+  for(const t of live(DB.txns)){
+    if(t.kind !== 'out' || !inRange(t, r)) continue;
+    if((CAT[t.cat] || {}).flow !== 'spend') continue;
+    const k = (dim === 'by' ? t.by : t.grp) || 'Not set';
+    m.set(k, (m.get(k) || 0) + t.amount);
+  }
+  return [...m.entries()].sort((a,b) => b[1] - a[1]);
+}
+
+/* ── 5. cloud sync ─────────────────────────────────────── */
+
+/* One round trip. We send everything we hold; the Apps Script merges it
+   with the Sheet (newest edit per record wins) and returns the result.
+   Deletions travel as tombstones so they stay dead on every device. */
+async function sync(loud){
+  if(!syncUrl){ if(loud) alert('Add your sync link in Settings first.'); return; }
+  if(syncState.status === 'busy') return;
+  syncState = {status:'busy', at:syncState.at, msg:''};
+  paint();
+  try{
+    const res = await fetch(syncUrl, {
+      method:'POST', redirect:'follow',
+      headers:{'Content-Type':'text/plain;charset=utf-8'},  // simple request: no CORS preflight
+      body:JSON.stringify({accounts:DB.accounts, txns:DB.txns,
+        assets:DB.assets, debts:DB.debts, prefs:DB.prefs})
+    });
+    if(!res.ok) throw new Error('Server replied ' + res.status);
+    const out = await res.json();
+    if(!out.ok) throw new Error(out.error || 'The sync script reported a problem');
+
+    DB.accounts = out.data.accounts || DB.accounts;
+    DB.txns     = out.data.txns     || DB.txns;
+    DB.assets   = out.data.assets   || DB.assets;
+    DB.debts    = out.data.debts    || DB.debts;
+    if(out.data.prefs && (out.data.prefs.updated || 0) > (DB.prefs.updated || 0))
+      DB.prefs = Object.assign(DB.prefs, out.data.prefs);
+
+    purgeOldTombstones();
+    syncState = {status:'ok', at:Date.now(), msg:''};
+    localStorage.setItem(SYNC_AT, String(syncState.at));
+    save(false);
+    paint();
+    if(loud) alert('Synced. ' + live(DB.txns).length + ' entries on this device.');
+  }catch(err){
+    syncState = {status:'bad', at:syncState.at, msg:String(err.message || err)};
+    paint();
+    if(loud) alert('Sync failed.\n\n' + syncState.msg +
+      '\n\nCheck the link in Settings, and that you are online.');
+  }
+}
+/* Tombstones only need to outlive your other device being switched off. */
+function purgeOldTombstones(){
+  const cut = Date.now() - 120*864e5;
+  ['txns','assets','debts','accounts'].forEach(k => {
+    DB[k] = DB[k].filter(x => !(x.deleted && (x.updated || 0) < cut));
+  });
+}
+
+/* ── 6. view state ─────────────────────────────────────── */
+
+/* Within one group (a person or a family group), split by category. */
+function subBreakdown(r, kind, dim, key){
+  const m = new Map();
+  for(const t of rowTxns(r, kind, dim, key)){
+    const c = CAT[t.cat] || {label:'Something else', flow:'spend'};
+    const ck = t.cat || 'other';
+    const e = m.get(ck) || {key:ck, label:c.label, flow:c.flow, total:0, count:0};
+    e.total += t.amount; e.count++;
+    m.set(ck, e);
+  }
+  return [...m.values()].sort((a,b) => b.total - a.total);
+}
+/* Transactions inside one group AND one category. */
+function subTxns(r, kind, dim, key, cat){
+  return rowTxns(r, kind, dim, key).filter(t => (t.cat || 'other') === cat);
+}
+
+const V = {tab:'home', period:'this', dim:'cat', expand:{out:null, in:null},
+           sub:{out:null, in:null}, sheet:null, draft:{}, search:''};
+const go = patch => { Object.assign(V, patch); paint(); };
+const openSheet = (sheet, draft = {}) => go({sheet, draft});
+const close = () => go({sheet:null, draft:{}});
+
+/* ── 7. shared pieces ──────────────────────────────────── */
+
+/* The three ways money leaves you, and the total. Shared by Home and Flow. */
+function outflowRows(t){
+  return `<div class="ruled" style="margin-top:12px;padding-top:4px;border-top:1px solid var(--line)">
+    <div class="item" style="padding:7px 0"><span class="grow sm">Living expenses</span>
+      <span class="num" style="font-weight:700">${money(t.spent)}</span></div>
+    <div class="item" style="padding:7px 0"><span class="grow sm">EMI &amp; loan repayment</span>
+      <span class="num" style="font-weight:700">${money(t.emi)}</span></div>
+    <div class="item" style="padding:7px 0"><span class="grow sm">Investment &amp; saving</span>
+      <span class="num hold" style="font-weight:700">${money(t.saved)}</span></div>
+    <div class="item" style="padding:8px 0"><span class="grow sm" style="font-weight:700">Total went out</span>
+      <span class="num neg" style="font-weight:700;font-size:16px">${money(t.outlay)}</span></div>
+  </div>`;
+}
+
+function beam(leftLabel, leftVal, rightLabel, rightVal){
+  const max = Math.max(leftVal, rightVal, 1);
+  return `<div class="beam">
+    <div class="beam-track">
+      <div class="beam-l" style="width:${(leftVal/max)*50}%"></div>
+      <div class="beam-r" style="width:${(rightVal/max)*50}%"></div>
+    </div>
+    <div class="beam-legend">
+      <div><span class="eyebrow">${esc(leftLabel)}</span><b class="num neg">${money(leftVal)}</b></div>
+      <div class="r"><span class="eyebrow">${esc(rightLabel)}</span><b class="num pos">${money(rightVal)}</b></div>
+    </div></div>`;
+}
+function strip(title, pairs, total){
+  if(!pairs.length) return '';
+  return `<div style="margin-top:14px"><span class="eyebrow">${esc(title)}</span>
+    <div class="split">${pairs.map(([k,v]) => `<div>
+      <div class="xs muted trunc">${esc(k)}</div>
+      <div class="num" style="font-weight:700;font-size:15px">${money(v)}</div>
+      <div class="xs muted">${total ? Math.round(v/total*100) : 0}%</div>
+    </div>`).join('')}</div></div>`;
+}
+function syncChip(){
+  const s = syncState;
+  const label = !syncUrl ? 'Sync off'
+    : s.status === 'busy' ? 'Syncing…'
+    : s.status === 'bad'  ? 'Sync failed'
+    : 'Synced ' + ago(s.at);
+  const cls = !syncUrl ? '' : s.status === 'busy' ? 'busy' : s.status === 'bad' ? 'bad' : 'ok';
+  return `<button class="sync ${cls}" data-act="${syncUrl ? 'sync-loud' : 'go-settings'}">${label}</button>`;
+}
+
+/* ── 8. screens ────────────────────────────────────────── */
+
+const match = (x,q) => (x.party||'').toLowerCase().includes(q) || (x.note||'').toLowerCase().includes(q)
+  || ((CAT[x.cat]||{}).label||'').toLowerCase().includes(q) || String(x.amount).includes(q)
+  || (x.by||'').toLowerCase().includes(q) || (x.grp||'').toLowerCase().includes(q);
+
+const sorted = () => live(DB.txns)
+  .sort((a,b) => b.date.localeCompare(a.date) || (b.updated||0) - (a.updated||0));
+
+function screenHome(){
+  const r = range('this'), t = totals(r);
+  const q = V.search.toLowerCase();
+  let list = sorted();
+  if(q) list = list.filter(x => match(x, q));
+
+  return `
+  <div class="top"><h1>${esc(r.label)}</h1>${syncChip()}</div>
+
+  <div class="card">
+    ${beam('Went out', t.outlay, 'Earned', t.earned)}
+    ${outflowRows(t)}
+    <div class="row" style="margin-top:10px;padding-top:12px;border-top:1px solid var(--line)">
+      <div class="grow"><span class="eyebrow">Left after everything</span>
+        <div class="num ${t.netTotal>=0?'pos':'neg'}" style="font-size:19px;font-weight:700">${money(t.netTotal)}</div></div>
+      <div style="text-align:right"><span class="eyebrow">Net worth</span>
+        <div class="num" style="font-size:19px;font-weight:700">${money(netWorth())}</div></div>
+    </div>
+    ${strip('Who spent it', spendBy(r,'by'), t.spent)}
+    ${strip('Who it was for', spendBy(r,'grp'), t.spent)}
+    ${(t.movedIn || (t.movedOut - t.emi)) ? `<div class="note">Not counted above:
+      ${(t.movedOut - t.emi) ? money(t.movedOut - t.emi)+' moved into savings or investments. ' : ''}
+      ${t.movedIn ? money(t.movedIn)+' came in from selling or borrowing. ' : ''}
+      That money changed shape rather than being spent.</div>` : ''}
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Where your money sits</span>
+    <div class="ruled" style="margin-top:8px">
+      ${live(DB.accounts).map(a => {
+        const b = balance(a.id), card = a.kind === 'card';
+        const owed = card ? Math.max(0, -b) : 0;
+        const avail = card && a.limit ? num(a.limit) - owed : null;
+        const sub = card
+          ? (a.limit ? money(avail) + ' available of ' + money(num(a.limit))
+                     : (owed > 0 ? 'Outstanding on card' : 'Nothing outstanding'))
+          : a.kind === 'cash' ? 'Cash' : 'Account';
+        return `<div class="item">
+          <div class="grow"><div class="trunc" style="font-weight:600">${esc(a.name)}</div>
+            <div class="xs muted">${sub}</div></div>
+          <div class="num" style="font-weight:700;${(card ? owed > 0 : b < 0) ? 'color:var(--out)' : ''}">
+            ${money2(card ? owed : b)}</div></div>`;
+      }).join('')}
+    </div>
+  </div>
+
+  <div class="card" style="padding:4px 12px">
+    <input id="q" type="search" placeholder="Search entries" value="${esc(V.search)}"
+      style="width:100%;border:none;background:transparent;outline:none;padding:11px 0;font-size:14px">
+  </div>
+  <div id="feed">${feed(list.slice(0, q ? 60 : 40), q)}</div>`;
+}
+
+function feed(list, q){
+  if(!list.length) return `<div class="empty">
+    <b>${q ? 'Nothing matches that' : 'No entries yet'}</b>
+    ${q ? 'Try a name, category or amount.' : 'Tap Add to record your first one.'}</div>`;
+  const byDay = new Map();
+  list.forEach(t => { if(!byDay.has(t.date)) byDay.set(t.date, []); byDay.get(t.date).push(t); });
+  let h = '';
+  for(const [date, items] of byDay){
+    const dayNet = items.reduce((s,t) => s + (t.kind==='in' ? t.amount : t.kind==='out' ? -t.amount : 0), 0);
+    h += `<div class="daterule"><span>${dayLabel(date)}</span><i></i>
+            <b class="${dayNet>=0?'pos':'neg'}">${money(dayNet)}</b></div>
+          <div class="card ruled" style="padding:2px 14px">`;
+    items.forEach(t => {
+      const c = CAT[t.cat] || {label:'Transfer', flow:'move'};
+      const isX = t.kind === 'xfer';
+      const tag = isX ? 'mv' : t.kind === 'in' ? (c.flow==='earn'?'in':'mv') : (c.flow==='spend'?'out':'mv');
+      const title = t.party || (isX ? acct(t.acct).name+' → '+acct(t.to).name : c.label);
+      const where = isX ? acct(t.acct).name+' → '+acct(t.to).name : c.label+' · '+acct(t.acct).name;
+      const badge = (t.by || t.grp)
+        ? `<div style="margin-top:3px"><span class="who">${esc([t.by,t.grp].filter(Boolean).join(' · '))}</span></div>`
+        : '';
+      h += `<div class="item">
+        <div class="grow">
+          <div class="trunc" style="font-weight:600">${esc(title)}</div>
+          <div class="xs muted trunc">${esc(where)}${t.note ? ' · '+esc(t.note) : ''}</div>${badge}
+        </div>
+        <span class="tag ${tag}">${isX ? 'MOVED' : t.kind === 'in' ? 'IN' : 'OUT'}</span>
+        <div class="num" style="font-weight:700;color:${tag==='in'?'var(--in)':tag==='out'?'var(--out)':'var(--hold)'}">
+          ${money2(t.amount)}</div>
+        <button class="icon" data-act="edit-txn" data-id="${t.id}" aria-label="Edit">✎</button>
+      </div>`;
+    });
+    h += '</div>';
+  }
+  return h;
+}
+
+function screenFlow(){
+  const r = range(V.period), t = totals(r);
+  const dimIn = V.dim === 'grp' ? 'cat' : V.dim;
+  const outRows = breakdown(r, 'out', V.dim);
+  const inRows  = breakdown(r, 'in', dimIn);
+  const outTotal = t.spent + t.movedOut, inTotal = t.earned + t.movedIn;
+
+  // one transaction line inside an expanded row
+  const subLine = t2 => {
+    const title = t2.party || (CAT[t2.cat]||{label:'—'}).label;
+    const meta = [dayLabel(t2.date), acct(t2.acct).name, t2.note].filter(Boolean).join(' · ');
+    return `<div class="item" style="padding:8px 0 8px 12px;border-left:2px solid var(--line);margin-left:2px">
+      <div class="grow"><div class="trunc" style="font-weight:600;font-size:13.5px">${esc(title)}</div>
+        <div class="xs muted trunc">${esc(meta)}</div></div>
+      <div class="num sm" style="font-weight:700">${money2(t2.amount)}</div>
+      <button class="icon" data-act="edit-txn" data-id="${t2.id}" aria-label="Edit">✎</button>
+    </div>`;
+  };
+
+  const bars = (rows, total, colour, kind) => {
+    if(!rows.length) return '<div class="empty" style="padding:20px"><b>Nothing here yet</b></div>';
+    const useDim = kind === 'in' ? dimIn : V.dim;
+    const open = V.expand[kind], openSub = V.sub[kind];
+    // For person/family views, expanding shows categories first, then transactions.
+    const twoLevel = useDim !== 'cat';
+
+    return rows.map(x => {
+      const isOpen = open === x.key;
+      let inner = '';
+      if(isOpen){
+        if(twoLevel){
+          inner = subBreakdown(r, kind, useDim, x.key).map(c => {
+            const cOpen = openSub === c.key;
+            const lines = cOpen
+              ? subTxns(r, kind, useDim, x.key, c.key).map(subLine).join('') : '';
+            return `<div style="padding:6px 0 6px 12px;border-left:2px solid var(--line);margin-left:2px">
+              <div class="row" data-act="expand-sub" data-id="${kind}:${esc(c.key)}" style="cursor:pointer">
+                <div class="grow trunc sm" style="font-weight:600">
+                  <span style="display:inline-block;width:11px;color:var(--mute)">${cOpen?'▾':'▸'}</span>${esc(c.label)}
+                  <span class="xs muted">×${c.count}</span></div>
+                <div class="xs muted num" style="width:38px;text-align:right">
+                  ${x.total ? Math.round(c.total/x.total*100) : 0}%</div>
+                <div class="num sm" style="font-weight:700">${money(c.total)}</div>
+              </div>
+              <div class="bar" style="height:5px"><div style="width:${x.total ? c.total/x.total*100 : 0}%;
+                background:${colour};opacity:${c.flow==='spend'?.75:.35}"></div></div>
+              ${cOpen ? `<div style="margin-top:4px">${lines}</div>` : ''}
+            </div>`;
+          }).join('');
+        } else {
+          inner = rowTxns(r, kind, useDim, x.key).map(subLine).join('');
+        }
+      }
+      return `<div style="padding:9px 0">
+        <div class="row" data-act="expand-row" data-id="${kind}:${esc(x.key)}" style="cursor:pointer">
+          <div class="grow trunc" style="font-weight:600">
+            <span style="display:inline-block;width:12px;color:var(--mute)">${isOpen?'▾':'▸'}</span>${esc(x.label)}
+            <span class="xs muted">×${x.count}</span></div>
+          <div class="xs muted num" style="width:42px;text-align:right">
+            ${total ? Math.round(x.total/total*100) : 0}%</div>
+          <div class="num" style="font-weight:700">${money(x.total)}</div>
+        </div>
+        <div class="bar"><div style="width:${total ? x.total/total*100 : 0}%;
+          background:${colour};opacity:${x.flow==='move'?.4:1}"></div></div>
+        ${isOpen ? `<div style="margin-top:6px">${inner}</div>` : ''}
+      </div>`;
+    }).join('');
+  };
+
+  return `
+  <div class="top"><h1>Money flow</h1>${syncChip()}</div>
+  <div class="seg" style="margin-bottom:8px">
+    ${[['this','This month'],['last','Last month'],['6m','6 months'],['all','All']]
+      .map(([k,l]) => `<button data-act="period" data-id="${k}" aria-pressed="${V.period===k}">${l}</button>`).join('')}
+  </div>
+  <div class="seg" style="margin-bottom:12px">
+    ${[['cat','By category'],['by','By person'],['grp','By family']]
+      .map(([k,l]) => `<button data-act="dim" data-id="${k}" aria-pressed="${V.dim===k}">${l}</button>`).join('')}
+  </div>
+
+  <div class="card">
+    ${beam('Went out', t.outlay, 'Earned', t.earned)}
+    ${outflowRows(t)}
+    <div class="row" style="margin-top:10px;padding-top:11px;border-top:1px solid var(--line)">
+      <span class="grow eyebrow">Left after everything · ${esc(r.label)}</span>
+      <span class="num ${t.netTotal>=0?'pos':'neg'}" style="font-size:18px;font-weight:700">${money(t.netTotal)}</span>
+    </div>
+  </div>
+
+  <div class="card"><span class="eyebrow">Where it went</span>
+    <div class="ruled" style="margin-top:4px">${bars(outRows, outTotal, 'var(--out)', 'out')}</div></div>
+
+  <div class="card"><span class="eyebrow">Where it came from</span>
+    <div class="ruled" style="margin-top:4px">${bars(inRows, inTotal, 'var(--in)', 'in')}</div></div>
+
+  <div class="note">Tap any row to see the transactions inside it.
+    Faded bars are money that moved rather than spent or earned —
+    investments, savings, lending and loan repayment.</div>`;
+}
+
+function screenWorth(){
+  const cash = cashOnHand(), dues = cardDues();
+  const own = cash + assetTotal(), owe = debtTotal() + dues, nw = own - owe;
+  const stale = live(DB.assets).filter(x => (Date.now() - (x.checked||0)) > 45*864e5);
+
+  const group = (rows, valName, act) => {
+    const by = new Map();
+    rows.forEach(x => { const k = x.cat || 'Other';
+      if(!by.has(k)) by.set(k, []); by.get(k).push(x); });
+    let h = '';
+    for(const [cat, items] of by){
+      const sum = items.reduce((s,x) => s + num(x[valName]), 0);
+      h += `<div class="row" style="margin:12px 0 2px">
+              <span class="grow eyebrow">${esc(cat)}</span>
+              <span class="num xs muted">${money(sum)}</span></div><div class="ruled">`;
+      items.forEach(x => {
+        const gain = valName === 'value' && num(x.invested) > 0 ? num(x.value) - num(x.invested) : null;
+        const old  = valName === 'value' && (Date.now() - (x.checked||0)) > 45*864e5;
+        h += `<div class="item">
+          <div class="grow"><div class="trunc" style="font-weight:600">${esc(x.name)}</div>
+            ${gain !== null ? `<div class="xs ${gain>=0?'pos':'neg'}">${gain>=0?'+':''}${money(gain)}
+                on ${money(num(x.invested))} put in</div>`
+              : x.note ? `<div class="xs muted trunc">${esc(x.note)}</div>` : ''}
+            ${valName === 'value' ? `<div class="xs ${old?'warn':'muted'}">Value checked
+              ${x.checked ? ago(x.checked) : 'never'}</div>` : ''}</div>
+          <div class="num" style="font-weight:700">${money(num(x[valName]))}</div>
+          <button class="icon" data-act="${act}" data-id="${x.id}" aria-label="Edit">✎</button></div>`;
+      });
+      h += '</div>';
+    }
+    return h;
+  };
+
+  return `
+  <div class="top"><h1>Own vs owe</h1>${syncChip()}</div>
+
+  <div class="card">
+    ${beam('You owe', owe, 'You own', own)}
+    <div class="row" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+      <span class="grow eyebrow">Net worth</span>
+      <span class="big num ${nw>=0?'pos':'neg'}">${money(nw)}</span></div>
+  </div>
+
+  ${stale.length ? `<div class="card" style="border-color:var(--warn)">
+    <div class="row"><div class="grow">
+      <div style="font-weight:700">${stale.length} value${stale.length>1?'s':''} to check</div>
+      <div class="xs muted">Open your broker or bank app and type in today's number.
+        Once a month is enough.</div>
+    </div><button class="btn" data-act="review">Review</button></div></div>` : ''}
+
+  <div class="card">
+    <div class="row"><span class="grow eyebrow">What you own</span>
+      <span class="num sm muted">${money(own)}</span></div>
+    <div class="row" style="margin:12px 0 2px"><span class="grow eyebrow">Money in accounts</span>
+      <span class="num xs muted">${money(cash)}</span></div>
+    <div class="ruled">
+      ${live(DB.accounts).filter(x => x.kind !== 'card').map(x => `<div class="item">
+        <div class="grow trunc" style="font-weight:600">${esc(x.name)}</div>
+        <div class="num" style="font-weight:700">${money(balance(x.id))}</div></div>`).join('')}
+    </div>
+    ${group(live(DB.assets), 'value', 'edit-asset')}
+    <button class="btn wide" data-act="new-asset">Add something you own</button>
+  </div>
+
+  <div class="card">
+    <div class="row"><span class="grow eyebrow">What you owe</span>
+      <span class="num sm muted">${money(owe)}</span></div>
+    ${dues > 0 ? `<div class="row" style="margin:12px 0 2px"><span class="grow eyebrow">Credit card</span>
+        <span class="num xs muted">${money(dues)}</span></div><div class="ruled">
+      ${live(DB.accounts).filter(x => x.kind === 'card' && balance(x.id) < 0).map(x => `<div class="item">
+        <div class="grow trunc" style="font-weight:600">${esc(x.name)}</div>
+        <div class="num" style="font-weight:700">${money(-balance(x.id))}</div></div>`).join('')}</div>` : ''}
+    ${group(live(DB.debts), 'outstanding', 'edit-debt')}
+    ${!live(DB.debts).length && dues <= 0
+      ? '<div class="empty" style="padding:20px"><b>Nothing owed</b>Add a loan if you have one.</div>' : ''}
+    <button class="btn wide" data-act="new-debt">Add a loan you owe</button>
+  </div>`;
+}
+
+function screenSettings(){
+  return `
+  <div class="top"><h1>Settings</h1>${syncChip()}</div>
+
+  <div class="card">
+    <span class="eyebrow">Cloud sync</span>
+    <div class="field"><label>Sync link</label>
+      <input id="f_syncurl" type="url" placeholder="https://script.google.com/macros/s/…/exec"
+        value="${esc(syncUrl)}"></div>
+    <button class="btn wide solid" data-act="save-url">Save link</button>
+    ${syncUrl ? `<button class="btn wide" data-act="sync-loud">Sync now</button>
+      <button class="btn wide danger" data-act="clear-url">Turn sync off</button>` : ''}
+    <div class="note">${syncUrl
+      ? (syncState.status === 'bad'
+          ? 'Last attempt failed: ' + esc(syncState.msg)
+          : 'Last synced ' + ago(syncState.at) + '. Syncs on its own a few seconds after each change.')
+      : 'Paste the link from your Google Apps Script deployment. Anyone holding that link can read your finances, so keep it private.'}</div>
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Who spends</span>
+    <div class="chips">${DB.prefs.people.map(p => `<span class="chip">${esc(p)}
+      <button class="icon" data-act="del-person" data-id="${esc(p)}"
+        style="padding:0 0 0 6px" aria-label="Remove">×</button></span>`).join('')}</div>
+    <button class="btn wide" data-act="add-person">Add a person</button>
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Who it's for</span>
+    <div class="chips">${DB.prefs.groups.map(p => `<span class="chip">${esc(p)}
+      <button class="icon" data-act="del-group" data-id="${esc(p)}"
+        style="padding:0 0 0 6px" aria-label="Remove">×</button></span>`).join('')}</div>
+    <button class="btn wide" data-act="add-group">Add a group</button>
+    <div class="note">This is how you see what goes to your parents versus your own family.
+      Removing a name here leaves older entries as they are.</div>
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Accounts</span>
+    <div class="ruled" style="margin-top:6px">
+      ${live(DB.accounts).map(a => `<div class="item">
+        <div class="grow"><div style="font-weight:600">${esc(a.name)}</div>
+          <div class="xs muted">Starting balance ${money2(num(a.opening))}</div></div>
+        <button class="icon" data-act="edit-acct" data-id="${a.id}">✎</button></div>`).join('')}
+    </div>
+    <button class="btn wide" data-act="new-acct">Add an account</button>
+    <div class="note">The starting balance is what was in the account on the day you began.
+      Everything after that is worked out from your entries.</div>
+  </div>
+
+  <div class="card">
+    <span class="eyebrow">Your data</span>
+    <button class="btn wide" data-act="export-json">Save a backup file</button>
+    <button class="btn wide" data-act="export-csv">Export entries as CSV</button>
+    <button class="btn wide" data-act="import">Restore from a backup</button>
+    <input type="file" id="importFile" accept=".json" hidden>
+    <div class="row" style="margin-top:12px"><span class="grow eyebrow">Dark mode</span>
+      <button class="btn" data-act="theme">${DB.prefs.dark ? 'On' : 'Off'}</button></div>
+    <button class="btn wide danger" style="margin-top:14px" data-act="wipe">Delete everything</button>
+  </div>`;
+}
+
+/* ── 9. sheets ─────────────────────────────────────────── */
+
+const chipRow = (list, current, act) => `<div class="chips">${list.map(x =>
+  `<button class="chip" data-act="${act}" data-id="${esc(x)}"
+    aria-pressed="${current === x}">${esc(x)}</button>`).join('')}</div>`;
+
+function sheetHTML(){
+  if(!V.sheet) return '';
+  const d = V.draft;
+  let body = '';
+
+  if(V.sheet === 'txn'){
+    const kind = d.kind || 'out';
+    const cats = kind === 'in' ? IN_CATS : OUT_CATS;
+    body = `
+      <h2>${d.id ? 'Edit entry' : 'New entry'}</h2>
+      ${!d.id ? (d._read
+        ? `<div class="note" style="margin-top:12px;border-color:var(--in);color:var(--in)">
+             ✓ Read from message — check the details below, then Add entry.
+             <button class="btn" data-act="clear-read" style="margin-top:8px">Paste another</button>
+           </div>`
+        : `<div class="field" style="margin-top:12px">
+             <label>Paste a bank SMS — fills the form for you</label>
+             <textarea id="f_sms" placeholder="Paste the message here, then tap Read it"></textarea>
+             <button class="btn wide solid" data-act="read-sms" style="margin-top:6px">Read it</button>
+             <div class="xs muted" style="text-align:center;margin-top:8px">— or fill it in below —</div>
+           </div>`) : ''}
+      <div class="seg" style="margin-top:12px">
+        ${[['out','Money out'],['in','Money in'],['xfer','Moved between']]
+          .map(([k,l]) => `<button data-act="kind" data-id="${k}" aria-pressed="${kind===k}">${l}</button>`).join('')}
+      </div>
+      <div class="field"><label>Amount</label>
+        <input class="amt-in num" id="f_amount" type="number" inputmode="decimal"
+          placeholder="0" value="${d.amount ?? ''}"></div>
+      ${kind === 'xfer' ? `
+        <div class="two">
+          <div class="field"><label>From</label><select id="f_acct">
+            ${live(DB.accounts).map(a =>
+              `<option value="${a.id}" ${d.acct===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}
+          </select></div>
+          <div class="field"><label>To</label><select id="f_to">
+            ${live(DB.accounts).map(a =>
+              `<option value="${a.id}" ${d.to===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}
+          </select></div>
+        </div>
+        <div class="note">Use this for cash withdrawals and credit card bill payments.
+          Your total money doesn't change — it just moves.</div>`
+      : `
+        <div class="field"><label>${kind==='in'?'Where it came from':'What for'}</label>
+          <select id="f_cat">${cats.map(c =>
+            `<option value="${c.id}" ${d.cat===c.id?'selected':''}>${esc(c.label)}</option>`).join('')}</select></div>
+        <div class="field"><label>${kind==='in'?'Received by':'Spent by'}</label>
+          ${chipRow(DB.prefs.people, d.by || DB.prefs.people[0], 'pick-by')}</div>
+        ${kind === 'out' ? `<div class="field"><label>Spent for</label>
+          ${chipRow(DB.prefs.groups, d.grp || DB.prefs.groups[0], 'pick-grp')}</div>` : ''}
+        <div class="field"><label>${kind==='in'?'Paid by (name)':'Paid to (name)'}</label>
+          <input id="f_party" type="text"
+            placeholder="${kind==='in'?'Employer, client, bank…':'Shop, person, biller…'}"
+            value="${esc(d.party||'')}"></div>
+        <div class="field"><label>${kind==='in'?'Received into':'Paid from'}</label>
+          <select id="f_acct">${live(DB.accounts).map(a =>
+            `<option value="${a.id}" ${d.acct===a.id?'selected':''}>${esc(a.name)}</option>`).join('')}</select></div>`}
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${d.date || today()}"></div>
+      <div class="field"><label>Note (optional)</label>
+        <input id="f_note" type="text" value="${esc(d.note||'')}"></div>
+      <button class="btn wide solid" data-act="save-txn" style="margin-top:16px;padding:13px">
+        ${d.id ? 'Save changes' : 'Add entry'}</button>
+      ${d.id ? `<button class="btn wide danger" data-act="del-txn" data-id="${d.id}">Delete entry</button>` : ''}`;
+  }
+
+  if(V.sheet === 'asset'){
+    body = `
+      <h2>${d.id ? 'Edit' : 'Something you own'}</h2>
+      <div class="field"><label>What is it</label>
+        <input id="f_name" type="text" placeholder="HDFC mutual fund, gold, plot…"
+          value="${esc(d.name||'')}"></div>
+      <div class="field"><label>Kind</label>${chipRow(ASSET_CATS, d.cat || 'Investments', 'pick-cat')}</div>
+      <div class="field"><label>What it's worth today</label>
+        <input class="amt-in num" id="f_value" type="number" inputmode="decimal"
+          placeholder="0" value="${d.value ?? ''}"></div>
+      <div class="field"><label>What you put in (optional)</label>
+        <input id="f_invested" class="num" type="number" inputmode="decimal"
+          placeholder="0" value="${d.invested ?? ''}"></div>
+      <div class="field"><label>Where to check it (optional)</label>
+        <input id="f_note" type="text" placeholder="Zerodha, SBI app, gold rate…"
+          value="${esc(d.note||'')}"></div>
+      <button class="btn wide solid" data-act="save-asset" style="margin-top:16px;padding:13px">
+        ${d.id ? 'Save changes' : 'Add it'}</button>
+      ${d.id ? `<button class="btn wide danger" data-act="del-asset" data-id="${d.id}">Remove</button>` : ''}
+      <div class="note">Buying an investment is a separate “Money out → Invested / saved” entry.
+        This card only records what it's worth now.</div>`;
+  }
+
+  if(V.sheet === 'review'){
+    const stale = live(DB.assets).filter(x => (Date.now() - (x.checked||0)) > 45*864e5);
+    body = `
+      <h2>Check these values</h2>
+      <p class="sm muted" style="margin-top:2px">Open the app or statement, type today's number, tap Save.</p>
+      ${stale.map(x => `<div class="field">
+        <label>${esc(x.name)} — ${esc(x.note || x.cat)} · was ${money(num(x.value))}</label>
+        <input class="num" id="rv_${x.id}" type="number" inputmode="decimal"
+          placeholder="${num(x.value)}"></div>`).join('')}
+      <button class="btn wide solid" data-act="save-review" style="margin-top:16px;padding:13px">Save values</button>
+      <div class="note">Leave a box empty to keep the old number and mark it checked today.</div>`;
+  }
+
+  if(V.sheet === 'debt'){
+    body = `
+      <h2>${d.id ? 'Edit' : 'A loan you owe'}</h2>
+      <div class="field"><label>Who it's from</label>
+        <input id="f_name" type="text" placeholder="HDFC car loan, brother…" value="${esc(d.name||'')}"></div>
+      <div class="field"><label>Kind</label>${chipRow(DEBT_CATS, d.cat || 'Bank loan', 'pick-cat')}</div>
+      <div class="field"><label>Still to repay</label>
+        <input class="amt-in num" id="f_outstanding" type="number" inputmode="decimal"
+          placeholder="0" value="${d.outstanding ?? ''}"></div>
+      <div class="field"><label>Note (optional)</label>
+        <input id="f_note" type="text" value="${esc(d.note||'')}"></div>
+      <button class="btn wide solid" data-act="save-debt" style="margin-top:16px;padding:13px">
+        ${d.id ? 'Save changes' : 'Add it'}</button>
+      ${d.id ? `<button class="btn wide" data-act="pay-debt" data-id="${d.id}">Record a repayment</button>
+        <button class="btn wide danger" data-act="del-debt" data-id="${d.id}">Remove</button>` : ''}`;
+  }
+
+  if(V.sheet === 'pay'){
+    const debt = live(DB.debts).find(x => x.id === d.id) || {};
+    body = `
+      <h2>Repay ${esc(debt.name||'')}</h2>
+      <p class="sm muted" style="margin-top:2px">${money(num(debt.outstanding))} outstanding</p>
+      <div class="field"><label>Amount paid</label>
+        <input class="amt-in num" id="f_amount" type="number" inputmode="decimal" placeholder="0"></div>
+      <div class="field"><label>Paid from</label><select id="f_acct">
+        ${live(DB.accounts).filter(a => a.kind !== 'card').map(a =>
+          `<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select></div>
+      <div class="field"><label>Date</label><input id="f_date" type="date" value="${today()}"></div>
+      <button class="btn wide solid" data-act="save-pay" data-id="${d.id}"
+        style="margin-top:16px;padding:13px">Record it</button>
+      <div class="note">This adds one “Money out” entry and reduces what you owe by the same amount.</div>`;
+  }
+
+  if(V.sheet === 'acct'){
+    const kind = d.kind || 'bank';
+    const nowBal = d.id ? balance(d.id) : 0;
+    body = `
+      <h2>${d.id ? 'Edit account' : 'New account'}</h2>
+      <div class="field"><label>Name</label>
+        <input id="f_name" type="text" placeholder="SBI savings" value="${esc(d.name||'')}"></div>
+      <div class="field"><label>Type</label>
+        <div class="chips">${[['bank','Bank'],['cash','Cash'],['card','Credit card']]
+          .map(([k,l]) => `<button class="chip" data-act="pick-kind" data-id="${k}"
+            aria-pressed="${kind===k}">${l}</button>`).join('')}</div></div>
+      ${d.id ? `
+        <div class="field"><label>${kind==='card'?'Amount owed on card now':'Balance right now'}</label>
+          <input class="amt-in num" id="f_current" type="number" inputmode="decimal"
+            placeholder="0" value="${kind==='card' ? Math.max(0,-nowBal) : nowBal}"></div>
+        <div class="note">Type what the account actually holds today and the app lines everything up
+          to match. ${kind==='card' ? 'Enter what you owe; 0 means nothing outstanding.' : ''}</div>`
+      : `<div class="field"><label>Balance when you started</label>
+          <input class="amt-in num" id="f_opening" type="number" inputmode="decimal"
+            placeholder="0" value="${d.opening ?? ''}"></div>`}
+      ${kind==='card' ? `<div class="field"><label>Card limit (optional)</label>
+        <input id="f_limit" class="num" type="number" inputmode="decimal"
+          placeholder="e.g. 196000" value="${d.limit ?? ''}"></div>` : ''}
+      <button class="btn wide solid" data-act="save-acct" style="margin-top:16px;padding:13px">
+        ${d.id ? 'Save changes' : 'Add account'}</button>
+      ${d.id && live(DB.accounts).length > 1
+        ? `<button class="btn wide danger" data-act="del-acct" data-id="${d.id}">Remove account</button>` : ''}`;
+  }
+
+  return `<div class="scrim" data-act="close"></div>
+    <div class="sheet"><div class="max"><div class="grab"></div>${body}</div></div>`;
+}
+
+/* ── 10. paint ─────────────────────────────────────────── */
+
+function paint(){
+  document.body.className = DB.prefs.dark ? 'dark' : '';
+  const screen = V.tab === 'home' ? screenHome() : V.tab === 'flow' ? screenFlow()
+               : V.tab === 'worth' ? screenWorth() : screenSettings();
+  el('app').innerHTML = `<div class="wrap">${screen}</div>
+    ${V.tab !== 'settings' ? '<button class="fab" data-act="new-txn">＋ Add</button>' : ''}
+    <nav class="nav">
+      ${[['home','Entries','▤'],['flow','Flow','⇄'],['worth','Worth','◧'],['settings','Settings','⚙']]
+        .map(([k,l,i]) => `<button data-act="tab" data-id="${k}"
+          aria-current="${V.tab===k?'page':'false'}"><i>${i}</i>${l}</button>`).join('')}
+    </nav>
+    ${sheetHTML()}`;
+  const q = el('q');
+  if(q && V.search){ q.focus(); q.setSelectionRange(q.value.length, q.value.length); }
+}
+
+/* ── 11. actions ───────────────────────────────────────── */
+
+function readForm(){
+  const d = V.draft;
+  ['amount','value','invested','outstanding','opening','current','limit','name','party','note','date','cat','acct','to']
+    .forEach(k => { const e = el('f_'+k); if(e) d[k] = e.value; });
+}
+function upsert(list, rec){
+  rec.updated = now();
+  const i = list.findIndex(x => x.id === rec.id);
+  i >= 0 ? list[i] = rec : list.unshift(rec);
+}
+function softDelete(list, id){
+  const x = list.find(y => y.id === id);
+  if(x){ x.deleted = true; x.updated = now(); }
+}
+function download(name, text, type){
+  const url = URL.createObjectURL(new Blob([text], {type}));
+  const a = document.createElement('a');
+  a.href = url; a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const ACTIONS = {
+  tab: id => go({tab:id, sheet:null, search:''}),
+  'go-settings': () => go({tab:'settings'}),
+  period: id => go({period:id, expand:{out:null, in:null}, sub:{out:null, in:null}}),
+  dim: id => go({dim:id, expand:{out:null, in:null}, sub:{out:null, in:null}}),
+  'expand-row': id => {
+    const [kind, ...rest] = id.split(':');
+    const key = rest.join(':');
+    const cur = {...V.expand}, curSub = {...V.sub};
+    const opening = cur[kind] !== key;
+    cur[kind] = opening ? key : null;   // tap again to collapse
+    curSub[kind] = null;                // always start with categories collapsed
+    go({expand:cur, sub:curSub});
+  },
+  'expand-sub': id => {
+    const [kind, ...rest] = id.split(':');
+    const key = rest.join(':');
+    const curSub = {...V.sub};
+    curSub[kind] = curSub[kind] === key ? null : key;
+    go({sub:curSub});
+  },
+  close,
+  theme: () => { DB.prefs.dark = !DB.prefs.dark; DB.prefs.updated = now(); save(); paint(); },
+
+  'sync-loud': () => sync(true),
+  'save-url': () => {
+    syncUrl = val('f_syncurl');
+    localStorage.setItem(URL_KEY, syncUrl);
+    syncState = {status:syncUrl ? 'ok' : 'off', at:0, msg:''};
+    syncUrl ? sync(true) : paint();
+  },
+  'clear-url': () => { if(!confirm('Turn off sync on this device?')) return;
+    syncUrl = ''; localStorage.removeItem(URL_KEY);
+    syncState = {status:'off', at:0, msg:''}; paint(); },
+
+  'new-txn': () => openSheet('txn', {kind:'out', cat:'food', acct:'a_bank', to:'a_cash',
+    date:today(), by:DB.prefs.people[0], grp:DB.prefs.groups[0]}),
+  kind: id => { readForm(); const d = V.draft;
+    d.kind = id; d.cat = id === 'in' ? 'salary' : 'food'; paint(); },
+  'edit-txn': id => { const t = live(DB.txns).find(x => x.id === id); if(t) openSheet('txn', {...t}); },
+  'pick-by':  id => { readForm(); V.draft.by  = id; paint(); },
+  'pick-grp': id => { readForm(); V.draft.grp = id; paint(); },
+  'pick-cat': id => { readForm(); V.draft.cat = id; paint(); },
+  'pick-kind':id => { readForm(); V.draft.kind = id; paint(); },
+
+  'clear-read': () => { readForm(); V.draft._read = false; paint(); },
+  'read-sms': () => {
+    readForm();                              // keep anything already typed
+    const p = parseSMS(val('f_sms'));
+    if(!p){ alert('Could not find an amount in that message. Type the details in below instead.'); return; }
+    Object.assign(V.draft, {kind:p.kind, amount:p.amount, party:p.party,
+      cat:p.cat || V.draft.cat, acct:p.acct, to:p.to || V.draft.to, date:p.date});
+    V.draft._read = true;                    // note it worked, for the confirmation line
+    paint();
+  },
+
+  'save-txn': () => {
+    readForm();
+    const d = V.draft, amount = num(d.amount);
+    if(amount <= 0){ alert('Enter an amount greater than zero.'); return; }
+    if(d.kind === 'xfer' && d.acct === d.to){ alert('Pick two different accounts.'); return; }
+    const rec = {id:d.id || uid(), date:d.date || today(), kind:d.kind, amount, acct:d.acct,
+      party:(d.party||'').trim(), note:(d.note||'').trim(),
+      by: d.kind === 'xfer' ? '' : (d.by || DB.prefs.people[0]),
+      grp:d.kind === 'out'  ? (d.grp || DB.prefs.groups[0]) : ''};
+    if(d.kind === 'xfer'){ rec.to = d.to; rec.cat = ''; } else rec.cat = d.cat;
+    upsert(DB.txns, rec); save(); close();
+  },
+  'del-txn': id => { if(!confirm('Delete this entry?')) return;
+    softDelete(DB.txns, id); save(); close(); },
+
+  'new-asset':  () => openSheet('asset', {cat:'Investments'}),
+  'edit-asset': id => { const a = live(DB.assets).find(x => x.id === id); if(a) openSheet('asset', {...a}); },
+  'save-asset': () => {
+    readForm(); const d = V.draft;
+    if(!(d.name||'').trim()){ alert('Give it a name.'); return; }
+    upsert(DB.assets, {id:d.id || uid(), name:d.name.trim(), cat:d.cat || 'Investments',
+      value:num(d.value), invested:num(d.invested), note:(d.note||'').trim(), checked:now()});
+    save(); close();
+  },
+  'del-asset': id => { if(!confirm('Remove this?')) return;
+    softDelete(DB.assets, id); save(); close(); },
+  review: () => openSheet('review'),
+  'save-review': () => {
+    live(DB.assets).forEach(x => {
+      const box = el('rv_'+x.id);
+      if(!box) return;
+      if(box.value.trim() !== '') x.value = num(box.value);
+      x.checked = now(); x.updated = now();
+    });
+    save(); close();
+  },
+
+  'new-debt':  () => openSheet('debt', {cat:'Bank loan'}),
+  'edit-debt': id => { const x = live(DB.debts).find(y => y.id === id); if(x) openSheet('debt', {...x}); },
+  'save-debt': () => {
+    readForm(); const d = V.draft;
+    if(!(d.name||'').trim()){ alert('Give it a name.'); return; }
+    upsert(DB.debts, {id:d.id || uid(), name:d.name.trim(), cat:d.cat || 'Bank loan',
+      outstanding:num(d.outstanding), note:(d.note||'').trim()});
+    save(); close();
+  },
+  'del-debt': id => { if(!confirm('Remove this?')) return;
+    softDelete(DB.debts, id); save(); close(); },
+  'pay-debt': id => openSheet('pay', {id}),
+  'save-pay': id => {
+    const amount = num(val('f_amount'));
+    const debt = live(DB.debts).find(x => x.id === id);
+    if(!debt || amount <= 0){ alert('Enter an amount greater than zero.'); return; }
+    upsert(DB.txns, {id:uid(), date:val('f_date') || today(), kind:'out', amount, cat:'repay',
+      acct:val('f_acct'), party:debt.name, note:'Repayment',
+      by:DB.prefs.people[0], grp:DB.prefs.groups[0]});
+    debt.outstanding = Math.max(0, num(debt.outstanding) - amount);
+    debt.updated = now();
+    save(); close();
+  },
+
+  'new-acct':  () => openSheet('acct', {kind:'bank'}),
+  'edit-acct': id => { const a = live(DB.accounts).find(x => x.id === id); if(a) openSheet('acct', {...a}); },
+  'save-acct': () => {
+    readForm(); const d = V.draft;
+    if(!(d.name||'').trim()){ alert('Give it a name.'); return; }
+    const kind = d.kind || 'bank';
+    const rec = {id:d.id || uid(), name:d.name.trim(), kind};
+    const limEl = el('f_limit');
+    if(kind === 'card' && limEl && limEl.value.trim() !== '') rec.limit = num(limEl.value);
+    else if(d.limit != null) rec.limit = num(d.limit);
+
+    const curEl = el('f_current');
+    if(d.id && curEl){
+      // User typed the real balance today. Work out the opening that makes the
+      // computed balance land exactly there: opening = target − (balance − oldOpening).
+      const wanted = kind === 'card' ? -num(curEl.value) : num(curEl.value);
+      const entriesNet = balance(d.id) - num(acct(d.id).opening);
+      rec.opening = Math.round((wanted - entriesNet) * 100) / 100;
+    } else {
+      rec.opening = num(d.opening);
+    }
+    upsert(DB.accounts, rec);
+    save(); close();
+  },
+  'del-acct': id => {
+    if(live(DB.txns).some(t => t.acct === id || t.to === id)){
+      alert('This account has entries against it. Move or delete those first.'); return; }
+    softDelete(DB.accounts, id); save(); close();
+  },
+
+  'add-person': () => {
+    const n = (prompt('Name of the person') || '').trim();
+    if(!n || DB.prefs.people.includes(n)) return;
+    DB.prefs.people.push(n); DB.prefs.updated = now(); save(); paint();
+  },
+  'del-person': id => {
+    if(DB.prefs.people.length < 2){ alert('Keep at least one person.'); return; }
+    DB.prefs.people = DB.prefs.people.filter(p => p !== id);
+    DB.prefs.updated = now(); save(); paint();
+  },
+  'add-group': () => {
+    const n = (prompt('Name of the group, for example Parents') || '').trim();
+    if(!n || DB.prefs.groups.includes(n)) return;
+    DB.prefs.groups.push(n); DB.prefs.updated = now(); save(); paint();
+  },
+  'del-group': id => {
+    if(DB.prefs.groups.length < 2){ alert('Keep at least one group.'); return; }
+    DB.prefs.groups = DB.prefs.groups.filter(p => p !== id);
+    DB.prefs.updated = now(); save(); paint();
+  },
+
+  'export-json': () => download('ledger-backup-'+today()+'.json',
+    JSON.stringify(DB, null, 2), 'application/json'),
+  'export-csv': () => {
+    const head = 'Date,Type,Amount,Category,Paid to,Account,To,Spent by,Spent for,Note\n';
+    const rows = live(DB.txns).sort((a,b) => a.date.localeCompare(b.date)).map(t =>
+      [t.date, t.kind, t.amount, (CAT[t.cat]||{}).label || 'Transfer', t.party||'',
+       acct(t.acct).name, t.to ? acct(t.to).name : '', t.by||'', t.grp||'', t.note||'']
+      .map(v => '"' + String(v).replace(/"/g,'""') + '"').join(',')).join('\n');
+    download('ledger-'+today()+'.csv', head + rows, 'text/csv');
+  },
+  import: () => el('importFile').click(),
+  wipe: () => {
+    if(!confirm('This deletes every entry, account, asset and loan on this device. Continue?')) return;
+    if(!confirm('Really delete everything? Save a backup first if unsure.')) return;
+    DB = blank(); save(false); go({tab:'home'});
+  }
+};
+
+/* ── 12. bank SMS reader ───────────────────────────────── */
+
+function parseSMS(text){
+  if(!text) return null;
+  const t = text.replace(/\s+/g,' ').trim();
+  const m = t.match(/(?:rs\.?|inr|₹)\s*([\d,]+(?:\.\d{1,2})?)/i)
+         || t.match(/([\d,]+(?:\.\d{1,2})?)\s*(?:rs|inr)\b/i);
+  if(!m) return null;
+  const amount = num(m[1].replace(/,/g,''));
+  if(amount <= 0) return null;
+
+  const credited = /\b(credited|received|deposit(?:ed)?|refund(?:ed)?)\b/i.test(t);
+  const debited  = /\b(debited|spent|paid|withdrawn|purchase)\b/i.test(t);
+  const kind = credited && !debited ? 'in' : 'out';
+
+  const hit = t.match(/(?:at|to|towards|vpa|from)\s+([A-Za-z][\w&.\- ']{1,32}?)(?=\s+(?:on|ref|via|upi|txn|info|avl|bal)\b|[.,;]|$)/i);
+  const party = hit ? hit[1].trim() : '';
+
+  let date = today();
+  const dm = t.match(/(\d{1,2})[-\/](\d{1,2})[-\/](\d{2,4})/);
+  if(dm){
+    const y = dm[3].length === 2 ? '20'+dm[3] : dm[3];
+    const cand = y+'-'+dm[2].padStart(2,'0')+'-'+dm[1].padStart(2,'0');
+    if(!isNaN(new Date(cand+'T00:00:00'))) date = cand;
+  }
+
+  const isCard = /\b(credit card|card ending|cc\s*x+|visa|mastercard|rupay)\b/i.test(t);
+  const isCash = /\b(atm|withdrawn|withdrawal)\b/i.test(t);
+  const card = live(DB.accounts).find(a => a.kind === 'card');
+  const cash = live(DB.accounts).find(a => a.kind === 'cash');
+
+  // Taking cash out isn't spending it — it moves bank money into your pocket.
+  if(kind === 'out' && isCash && cash)
+    return {kind:'xfer', amount, party:party || 'ATM', cat:'', acct:'a_bank', to:cash.id, date};
+
+  let cat = kind === 'in' ? 'otherin' : 'other';
+  if(kind === 'in'){
+    if(/salary/i.test(t)) cat = 'salary';
+    else if(/refund|cashback/i.test(t)) cat = 'refund';
+    else if(/interest|dividend/i.test(t)) cat = 'interest';
+  }else if(party){
+    const p = party.toLowerCase();
+    const guess = [
+      ['food',      ['swiggy','zomato','restaurant','cafe','coffee','pizza','bakery','hotel']],
+      ['groceries', ['bigbasket','blinkit','zepto','instamart','dmart','mart','grocer','jiomart']],
+      ['transport', ['uber','ola','rapido','metro','petrol','fuel','irctc','indian oil']],
+      ['shopping',  ['amazon','flipkart','myntra','ajio','meesho','nykaa','store']],
+      ['bills',     ['airtel','jio','vodafone','bsnl','recharge','electricity','gas','broadband','netflix','spotify']],
+      ['health',    ['pharm','medical','hospital','clinic','apollo','1mg']],
+      ['fun',       ['bookmyshow','pvr','inox','cinema']]
+    ].find(([, words]) => words.some(w => p.includes(w)));
+    if(guess) cat = guess[0];
+  }
+  return {kind, amount, party, cat, acct:(isCard && card) ? card.id : 'a_bank', date};
+}
+
+/* ── 13. wiring ────────────────────────────────────────── */
+
+document.addEventListener('click', e => {
+  const btn = e.target.closest('[data-act]');
+  if(!btn) return;
+  const fn = ACTIONS[btn.dataset.act];
+  if(fn){ e.preventDefault(); e.stopPropagation(); fn(btn.dataset.id); }
+});
+
+let searchTimer = null;
+document.addEventListener('input', e => {
+  if(e.target.id !== 'q') return;
+  const v = e.target.value;
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {          // repaint the list only, so the keyboard stays up
+    V.search = v;
+    const q = v.toLowerCase();
+    const list = q ? sorted().filter(x => match(x, q)) : sorted();
+    const box = el('feed');
+    if(box) box.innerHTML = feed(list.slice(0, q ? 60 : 40), q);
+  }, 140);
+});
+
+document.addEventListener('change', e => {
+  if(e.target.id !== 'importFile') return;
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';                      // so the same file can be picked again
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    try{
+      const d = JSON.parse(ev.target.result);
+      if(!Array.isArray(d.txns)) throw new Error('shape');
+      if(!confirm('This replaces everything currently in the app. Continue?')) return;
+      DB = Object.assign(blank(), d);
+      DB.prefs = Object.assign(blank().prefs, d.prefs || {});
+      save(); go({tab:'home'});
+    }catch(err){ alert("That file isn't a Ledger backup."); }
+  };
+  reader.readAsText(file);
+});
+
+document.addEventListener('keydown', e => { if(e.key === 'Escape' && V.sheet) close(); });
+document.addEventListener('visibilitychange', () => {
+  if(!document.hidden && syncUrl && Date.now() - syncState.at > 120000) sync(false);
+});
+
+/* ── 14. start ─────────────────────────────────────────── */
+
+DB = loadLocal();
+syncUrl = localStorage.getItem(URL_KEY) || '';
+syncState = {status:syncUrl ? 'ok' : 'off',
+             at:Number(localStorage.getItem(SYNC_AT)) || 0, msg:''};
+paint();
+if(syncUrl) sync(false);
+if(DB.migrated){
+  delete DB.migrated; save(false);
+  setTimeout(() => alert('Your old ExpenseTracker data has been brought across.\n\n' +
+    'Next: Settings → Accounts, set your real starting balances. Then look at Own vs owe.'), 400);
+}
+</script>
+</body>
+</html>
